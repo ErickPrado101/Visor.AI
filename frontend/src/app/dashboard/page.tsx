@@ -1,19 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { Card, CardContent, CardHeader, Tabs, Tab, Typography, Box } from "@mui/material"
+import React from 'react'
+import { Box, Typography, Card, CardContent, CardHeader, Tabs, Tab } from "@mui/material"
 import { TrendingUp, AttachMoney, ShoppingCart, Group } from '@mui/icons-material'
 import { Bar, Line, Pie } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js'
+import { useAppContext } from '../contexts/AppContext'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend)
-
-interface DashboardData {
-  vendas_por_vendedor: { nome: string; total: number }[];
-  produtos_mais_vendidos: { nome: string; total: number }[];
-  vendas_mensais: { mes: string; total: number }[];
-  desempenho_categorias: { categoria: string; vendas: number }[];
-}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -41,69 +35,118 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-const dashboardData: DashboardData = {
-  vendas_por_vendedor: [
-    { nome: "João Silva", total: 120000 },
-    { nome: "Maria Santos", total: 98000 },
-    { nome: "Pedro Oliveira", total: 85000 },
-    { nome: "Ana Rodrigues", total: 110000 },
-    { nome: "Carlos Ferreira", total: 75000 }
-  ],
-  produtos_mais_vendidos: [
-    { nome: "Smartphone X", total: 500 },
-    { nome: "Notebook Y", total: 300 },
-    { nome: "Fone de Ouvido Z", total: 1000 },
-    { nome: "Smart TV 4K", total: 200 },
-    { nome: "Câmera Digital", total: 150 }
-  ],
-  vendas_mensais: [
-    { mes: "Jan", total: 50000 },
-    { mes: "Fev", total: 60000 },
-    { mes: "Mar", total: 75000 },
-    { mes: "Abr", total: 65000 },
-    { mes: "Mai", total: 90000 },
-    { mes: "Jun", total: 100000 }
-  ],
-  desempenho_categorias: [
-    { categoria: "Eletrônicos", vendas: 250000 },
-    { categoria: "Moda", vendas: 180000 },
-    { categoria: "Casa", vendas: 120000 },
-    { categoria: "Esportes", vendas: 90000 },
-    { categoria: "Livros", vendas: 60000 }
-  ]
-};
-
 export default function Dashboard() {
-  const [tabValue, setTabValue] = useState(0)
+  const { vendedores, produtos, vendas } = useAppContext();
+  const [tabValue, setTabValue] = React.useState(0);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
+  const vendasTotais = produtos.reduce((total, produto) => total + produto.valorTotalVendido, 0);
+
+  const produtosVendidos = produtos.reduce((total, produto) => total + produto.quantidadeVendida, 0);
+
+  const vendasPorVendedor = vendedores.map(vendedor => ({
+    nome: vendedor.nome,
+    total: vendedor.vendasTotais
+  }));
+
+  // Função para calcular a média móvel
+  const calcularMediaMovel = (dados: number[], periodo: number) => {
+    return dados.map((_, index, array) => {
+      const start = Math.max(0, index - periodo + 1);
+      const slice = array.slice(start, index + 1);
+      return slice.reduce((sum, num) => sum + num, 0) / slice.length;
+    });
+  };
+
+  // Preparar dados de vendas mensais
+  const vendasMensais = Array.from({ length: 12 }, (_, i) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - i);
+    const mes = date.toLocaleString('default', { month: 'short' });
+    const total = vendas
+      .filter(venda => {
+        const vendaDate = new Date(venda.data);
+        return vendaDate.getMonth() === date.getMonth() && vendaDate.getFullYear() === date.getFullYear();
+      })
+      .reduce((total, venda) => total + venda.valorTotal, 0);
+    return { mes, total };
+  }).reverse();
+
+  const valoresVendas = vendasMensais.map(item => item.total);
+  const mediaMovel3Meses = calcularMediaMovel(valoresVendas, 3);
+  const mediaMovel6Meses = calcularMediaMovel(valoresVendas, 6);
+
+  // Calcular previsão para os próximos 3 meses
+  const calcularPrevisao = (dados: number[], meses: number) => {
+    const ultimosMeses = dados.slice(-meses);
+    const media = ultimosMeses.reduce((sum, value) => sum + value, 0) / meses;
+    const tendencia = (ultimosMeses[ultimosMeses.length - 1] - ultimosMeses[0]) / meses;
+    
+    return Array.from({ length: 3 }, (_, i) => {
+      return Math.max(0, media + tendencia * (i + 1));
+    });
+  };
+
+  const previsao3Meses = calcularPrevisao(valoresVendas, 3);
+  const previsao6Meses = calcularPrevisao(valoresVendas, 6);
+
+  // Calcular taxa de crescimento
+  const taxaCrescimento = ((previsao3Meses[2] - valoresVendas[valoresVendas.length - 1]) / valoresVendas[valoresVendas.length - 1]) * 100;
+
+  const desempenhoCategoriasData = produtos.reduce((acc, produto) => {
+    if (!acc[produto.categoria]) {
+      acc[produto.categoria] = 0;
+    }
+    acc[produto.categoria] += produto.valorTotalVendido;
+    return acc;
+  }, {} as Record<string, number>);
+
   const vendasPorVendedorData = {
-    labels: dashboardData.vendas_por_vendedor.map(item => item.nome),
+    labels: vendasPorVendedor.map(item => item.nome),
     datasets: [{
       label: 'Total de Vendas',
-      data: dashboardData.vendas_por_vendedor.map(item => item.total),
+      data: vendasPorVendedor.map(item => item.total),
       backgroundColor: 'rgba(53, 162, 235, 0.5)',
     }]
-  }
+  };
 
   const vendasMensaisData = {
-    labels: dashboardData.vendas_mensais.map(item => item.mes),
-    datasets: [{
-      label: 'Vendas Mensais',
-      data: dashboardData.vendas_mensais.map(item => item.total),
-      borderColor: 'rgb(75, 192, 192)',
-      tension: 0.1
-    }]
-  }
+    labels: [...vendasMensais.map(item => item.mes), 'Previsão 1', 'Previsão 2', 'Previsão 3'],
+    datasets: [
+      {
+        label: 'Vendas Mensais',
+        data: [...valoresVendas, ...previsao3Meses],
+        borderColor: 'rgb(75, 192, 192)',
+        tension: 0.1,
+        fill: false
+      },
+      {
+        label: 'Média Móvel (3 meses)',
+        data: [...mediaMovel3Meses, ...previsao3Meses],
+        borderColor: 'rgb(255, 99, 132)',
+        borderDash: [5, 5],
+        tension: 0.1,
+        fill: false
+      },
+      {
+        label: 'Média Móvel (6 meses)',
+        data: [...mediaMovel6Meses, ...previsao6Meses],
+        borderColor: 'rgb(54, 162, 235)',
+        borderDash: [3, 3],
+        tension: 0.1,
+        fill: false
+      }
+    ]
+  };
 
-  const desempenhoCategoriasData = {
-    labels: dashboardData.desempenho_categorias.map(item => item.categoria),
+  const desempenhoCategoriasChartData = {
+    labels: Object.keys(desempenhoCategoriasData),
     datasets: [{
       label: 'Vendas por Categoria',
-      data: dashboardData.desempenho_categorias.map(item => item.vendas),
+      data: Object.values(desempenhoCategoriasData),
       backgroundColor: [
         'rgba(255, 99, 132, 0.5)',
         'rgba(54, 162, 235, 0.5)',
@@ -112,7 +155,16 @@ export default function Dashboard() {
         'rgba(153, 102, 255, 0.5)',
       ],
     }]
-  }
+  };
+
+  const produtosMaisVendidosData = {
+    labels: produtos.sort((a, b) => b.quantidadeVendida - a.quantidadeVendida).slice(0, 5).map(p => p.nome),
+    datasets: [{
+      label: 'Quantidade Vendida',
+      data: produtos.sort((a, b) => b.quantidadeVendida - a.quantidadeVendida).slice(0, 5).map(p => p.quantidadeVendida),
+      backgroundColor: 'rgba(75, 192, 192, 0.5)',
+    }]
+  };
 
   return (
     <Box sx={{ maxWidth: 1200, margin: 'auto', padding: 4 }}>
@@ -128,23 +180,17 @@ export default function Dashboard() {
           />
           <CardContent>
             <Typography variant="h6">
-              R$ {dashboardData.vendas_por_vendedor.reduce((acc, curr) => acc + curr.total, 0).toLocaleString()}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              +20.1% em relação ao mês anterior
+              R$ {vendasTotais.toLocaleString()}
             </Typography>
           </CardContent>
         </Card>
         <Card>
           <CardHeader
-            title={<Typography variant="subtitle2">Novos Clientes</Typography>}
+            title={<Typography variant="subtitle2">Vendedores Ativos</Typography>}
             action={<Group />}
           />
           <CardContent>
-            <Typography variant="h6">+2350</Typography>
-            <Typography variant="caption" color="text.secondary">
-              +180.1% em relação ao mês anterior
-            </Typography>
+            <Typography variant="h6">{vendedores.length}</Typography>
           </CardContent>
         </Card>
         <Card>
@@ -154,22 +200,19 @@ export default function Dashboard() {
           />
           <CardContent>
             <Typography variant="h6">
-              {dashboardData.produtos_mais_vendidos.reduce((acc, curr) => acc + curr.total, 0)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              +19% em relação ao mês anterior
+              {produtosVendidos}
             </Typography>
           </CardContent>
         </Card>
         <Card>
           <CardHeader
-            title={<Typography variant="subtitle2">Taxa de Crescimento</Typography>}
+            title={<Typography variant="subtitle2">Previsão de Crescimento</Typography>}
             action={<TrendingUp />}
           />
           <CardContent>
-            <Typography variant="h6">+12.5%</Typography>
+            <Typography variant="h6">{taxaCrescimento.toFixed(2)}%</Typography>
             <Typography variant="caption" color="text.secondary">
-              +2.4% em relação ao mês anterior
+              Próximos 3 meses
             </Typography>
           </CardContent>
         </Card>
@@ -180,7 +223,7 @@ export default function Dashboard() {
           <Tabs value={tabValue} onChange={handleTabChange} aria-label="dashboard tabs">
             <Tab label="Vendas" />
             <Tab label="Produtos" />
-            <Tab label="Categorias" />
+            <Tab label="Previsões" />
           </Tabs>
         </Box>
         <TabPanel value={tabValue} index={0}>
@@ -193,7 +236,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
           <Card>
-            <CardHeader title="Vendas Mensais" subheader="Tendência de vendas ao longo dos últimos meses" />
+            <CardHeader title="Vendas Mensais e Previsões" subheader="Tendência de vendas e previsões para os próximos meses" />
             <CardContent>
               <Box sx={{ height: 300 }}>
                 <Line data={vendasMensaisData} options={{ maintainAspectRatio: false }} />
@@ -202,34 +245,29 @@ export default function Dashboard() {
           </Card>
         </TabPanel>
         <TabPanel value={tabValue} index={1}>
-          <Card>
-            <CardHeader title="Produtos Mais Vendidos" subheader="Top 5 produtos com maior volume de vendas" />
+          <Card sx={{ mb: 2 }}>
+            <CardHeader title="Desempenho por Categoria" subheader="Distribuição de vendas por categoria de produto" />
             <CardContent>
-              <table style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left' }}>Produto</th>
-                    <th style={{ textAlign: 'right' }}>Total Vendido</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboardData.produtos_mais_vendidos.map((produto, index) => (
-                    <tr key={index} style={{ borderTop: '1px solid #e0e0e0' }}>
-                      <td style={{ padding: '8px 0' }}>{produto.nome}</td>
-                      <td style={{ textAlign: 'right', padding: '8px 0' }}>{produto.total}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <Box sx={{ height: 300 }}>
+                <Pie data={desempenhoCategoriasChartData} options={{ maintainAspectRatio: false }} />
+              </Box>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader title="Produtos Mais Vendidos" subheader="Top 5 produtos com maior quantidade vendida" />
+            <CardContent>
+              <Box sx={{ height: 300 }}>
+                <Bar data={produtosMaisVendidosData} options={{ maintainAspectRatio: false }} />
+              </Box>
             </CardContent>
           </Card>
         </TabPanel>
         <TabPanel value={tabValue} index={2}>
           <Card>
-            <CardHeader title="Desempenho por Categoria" subheader="Distribuição de vendas por categoria de produto" />
+            <CardHeader title="Previsão de Vendas" subheader="Projeção de vendas para os próximos meses" />
             <CardContent>
               <Box sx={{ height: 300 }}>
-                <Pie data={desempenhoCategoriasData} options={{ maintainAspectRatio: false }} />
+                <Line data={vendasMensaisData} options={{ maintainAspectRatio: false }} />
               </Box>
             </CardContent>
           </Card>

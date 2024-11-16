@@ -16,9 +16,13 @@ import {
   Dialog, 
   DialogActions, 
   DialogContent, 
-  DialogTitle
+  DialogTitle,
+  IconButton
 } from '@mui/material'
-import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material'
+import { useAppContext } from '../contexts/AppContext'
+
+
 
 interface Vendedor {
   id: number;
@@ -28,46 +32,57 @@ interface Vendedor {
   vendasTotais: number;
 }
 
-const vendedoresIniciais: Vendedor[] = [
-  { id: 1, nome: "João Silva", email: "joao@exemplo.com", telefone: "(11) 98765-4321", vendasTotais: 120000 },
-  { id: 2, nome: "Maria Santos", email: "maria@exemplo.com", telefone: "(21) 98765-4321", vendasTotais: 98000 },
-  { id: 3, nome: "Pedro Oliveira", email: "pedro@exemplo.com", telefone: "(31) 98765-4321", vendasTotais: 85000 },
-  { id: 4, nome: "Ana Rodrigues", email: "ana@exemplo.com", telefone: "(41) 98765-4321", vendasTotais: 110000 },
-  { id: 5, nome: "Carlos Ferreira", email: "carlos@exemplo.com", telefone: "(51) 98765-4321", vendasTotais: 75000 },
-];
-
 export default function Vendedores() {
-  const [vendedores, setVendedores] = useState<Vendedor[]>(vendedoresIniciais);
+  const { vendedores, setVendedores } = useAppContext();
   const [open, setOpen] = useState(false);
-  const [novoVendedor, setNovoVendedor] = useState<Omit<Vendedor, 'id' | 'vendasTotais'>>({ nome: '', email: '', telefone: '' });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [novoVendedor, setNovoVendedor] = useState({ nome: '', email: '', telefone: '', vendasTotais: 0 });
 
   const handleClickOpen = () => {
     setOpen(true);
+    setEditingId(null);
+    setNovoVendedor({ nome: '', email: '', telefone: '', vendasTotais: 0 });
   };
 
   const handleClose = () => {
     setOpen(false);
-    setNovoVendedor({ nome: '', email: '', telefone: '' });
+    setEditingId(null);
+    setNovoVendedor({ nome: '', email: '', telefone: '', vendasTotais: 0 });
   };
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
-    setNovoVendedor(prev => ({ ...prev, [name]: value }));
+    setNovoVendedor(prev => ({ 
+      ...prev, 
+      [name]: name === 'vendasTotais' ? Number(value) : value 
+    }));
   };
 
   const handleAddVendedor = () => {
-    const id = Math.max(...vendedores.map(v => v.id)) + 1;
-    const vendedor: Vendedor = {
-      ...novoVendedor,
-      id,
-      vendasTotais: 0
-    };
-    setVendedores(prev => [...prev, vendedor]);
+    if (editingId !== null) {
+      setVendedores(prev => prev.map(vendedor => 
+        vendedor.id === editingId ? { ...vendedor, ...novoVendedor } : vendedor
+      ));
+    } else {
+      const id = Math.max(...vendedores.map(v => v.id), 0) + 1;
+      setVendedores(prev => [...prev, { id, ...novoVendedor }]);
+    }
     handleClose();
   };
 
   const handleDeleteVendedor = (id: number) => {
     setVendedores(prev => prev.filter(vendedor => vendedor.id !== id));
+  };
+
+  const handleEditVendedor = (vendedor: Vendedor) => {
+    setEditingId(vendedor.id);
+    setNovoVendedor({
+      nome: vendedor.nome,
+      email: vendedor.email,
+      telefone: vendedor.telefone,
+      vendasTotais: vendedor.vendasTotais
+    });
+    setOpen(true);
   };
 
   return (
@@ -104,13 +119,12 @@ export default function Vendedores() {
                 <TableCell>{vendedor.telefone}</TableCell>
                 <TableCell align="right">R$ {vendedor.vendasTotais.toLocaleString()}</TableCell>
                 <TableCell align="right">
-                  <Button
-                    startIcon={<DeleteIcon />}
-                    onClick={() => handleDeleteVendedor(vendedor.id)}
-                    color="error"
-                  >
-                    Excluir
-                  </Button>
+                  <IconButton onClick={() => handleEditVendedor(vendedor)} color="primary">
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton onClick={() => handleDeleteVendedor(vendedor.id)} color="error">
+                    <DeleteIcon />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -119,7 +133,7 @@ export default function Vendedores() {
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose}>
-        <DialogTitle>Adicionar Novo Vendedor</DialogTitle>
+        <DialogTitle>{editingId !== null ? 'Editar Vendedor' : 'Adicionar Novo Vendedor'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -152,10 +166,20 @@ export default function Vendedores() {
             value={novoVendedor.telefone}
             onChange={handleInputChange}
           />
+          <TextField
+            margin="dense"
+            name="vendasTotais"
+            label="Vendas Totais"
+            type="number"
+            fullWidth
+            variant="standard"
+            value={novoVendedor.vendasTotais}
+            onChange={handleInputChange}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose}>Cancelar</Button>
-          <Button onClick={handleAddVendedor}>Adicionar</Button>
+          <Button onClick={handleAddVendedor}>{editingId !== null ? 'Salvar' : 'Adicionar'}</Button>
         </DialogActions>
       </Dialog>
     </Box>
